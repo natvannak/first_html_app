@@ -10,7 +10,7 @@ pipeline {
         stage('Build') {
             steps {
                 sh 'echo "Building the project..."'
-                sh 'docker build -t krolnoeurnrpisb/usea-app-html:${BUILD_NUMBER} .'
+                sh 'docker build -t natvannak/usea-app-html:${BUILD_NUMBER} .'
                
             }
         }
@@ -20,7 +20,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-id', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
                     sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
                 }
-                sh 'docker push krolnoeurnrpisb/usea-app-html:${BUILD_NUMBER}'
+                sh 'docker push natvannak/usea-app-html:${BUILD_NUMBER}'
                 // Add your test commands here
             }
         }
@@ -33,9 +33,9 @@ pipeline {
                 // }
                     ssh '''
                         // remove container if it exists
-                        ssh root@54.204.234.40 docker stop usea-app-html || true
+                        ssh root@3.239.208.125 docker stop usea-app-html || true
                     '''
-                    sh 'ssh root@54.204.234.40 docker run -d --name usea-app-html -p 9099:80 krolnoeurnrpisb/usea-app-html:${BUILD_NUMBER}'
+                    sh 'ssh root@3.239.208.125 docker run -d --name usea-app-html -p 9099:80 natvannak/usea-app-html:${BUILD_NUMBER}'
                 // Add your deploy commands here
                 }
                 
