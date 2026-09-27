@@ -1,45 +1,77 @@
 pipeline {
     agent any
 
+    environment {
+        IMAGE_NAME = 'natvannak/usea-app-html'
+        SERVER_IP  = '44.223.99.204'
+        SERVER_PORT = '9099'
+    }
+
     stages {
+
         stage('Checkout Code') {
             steps {
                 checkout scm
             }
         }
+
         stage('Build') {
             steps {
-                sh 'echo "Building the project..."'
-                sh 'docker build -t natvannak/usea-app-html:${BUILD_NUMBER} .'
-               
+                sh 'echo "Building the Docker image..."'
+                sh 'docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .'
             }
         }
+
         stage('Push Image') {
             steps {
-                sh 'echo "Push image to registry..."'
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-id', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                    sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
+                sh 'echo "Logging in to Docker Hub..."'
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'docker-hub-id',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login \
+                            -u "$DOCKER_USERNAME" \
+                            --password-stdin
+                    '''
                 }
-                sh 'docker push natvannak/usea-app-html:${BUILD_NUMBER}'
-                // Add your test commands here
+
+                sh 'echo "Pushing image to Docker Hub..."'
+                sh 'docker push ${IMAGE_NAME}:${BUILD_NUMBER}'
             }
         }
+
         stage('Deploy') {
             steps {
-                script{
-                    sh 'echo "Deploying the project..."'
-                // ssh agent(['your-ssh-credentials-id']) {
-                //     sh 'ssh user@your-server "docker pull krolnoeurnrpisb/usea-app-html:1.0.${BUILD_NUMBER} && docker stop your-container-name || true && docker rm your-container-name || true && docker run -d --name your-container-name -p 80:80 krolnoeurnrpisb/usea-app-html:1.0.${BUILD_NUMBER}"'
-                // }
-                    ssh '''
-                        // remove container if it exists
-                        ssh root@3.239.208.125 docker stop usea-app-html || true
-                    '''
-                    sh 'ssh root@3.239.208.125 docker run -d --name usea-app-html -p 9099:80 natvannak/usea-app-html:${BUILD_NUMBER}'
-                // Add your deploy commands here
-                }
-                
+                sh 'echo "Deploying application to AWS EC2..."'
+
+                sh '''
+                    ssh root@${SERVER_IP} "
+                        docker pull ${IMAGE_NAME}:${BUILD_NUMBER} &&
+                        docker stop usea-app-html || true &&
+                        docker rm usea-app-html || true &&
+                        docker run -d \
+                            --name usea-app-html \
+                            -p ${SERVER_PORT}:80 \
+                            ${IMAGE_NAME}:${BUILD_NUMBER}
+                    "
+                '''
             }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployment completed successfully!"
+            echo "Application: http://${SERVER_IP}:${SERVER_PORT}"
+        }
+
+        failure {
+            echo "Pipeline failed."
         }
     }
 }

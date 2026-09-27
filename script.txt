@@ -1,0 +1,175 @@
+pipeline {
+    agent any
+
+    environment {
+        GITHUB_REPOSITORY = 'https://github.com/natvannak/first_html_app.git'
+        IMAGE_NAME = 'natvannak/usea-html-app'
+    }
+
+    parameters {
+        gitParameter(
+            name: 'TAG',
+            type: 'PT_TAG',
+            defaultValue: '',
+            description: 'Select the Git tag to build.'
+        )
+
+        gitParameter(
+            name: 'BRANCH',
+            type: 'PT_BRANCH',
+            defaultValue: 'main',
+            description: 'Select the Git branch to build.'
+        )
+
+        choice(
+            name: 'ACTION',
+            choices: ['deploy', 'rollback'],
+            description: 'Choose whether to deploy a new version or rollback to a previous version.'
+        )
+    }
+
+    stages {
+
+        stage('Check Git') {
+            steps {
+                sh '''
+                    echo "======================================"
+                    echo "Git Information"
+                    echo "======================================"
+
+                    which git
+                    git --version
+
+                    echo "======================================"
+                '''
+            }
+        }
+
+        stage('Checkout Code') {
+            steps {
+                script {
+
+                    echo "======================================"
+                    echo "Checkout Configuration"
+                    echo "======================================"
+                    echo "Action : ${params.ACTION}"
+                    echo "Tag    : ${params.TAG}"
+                    echo "Branch : ${params.BRANCH}"
+                    echo "======================================"
+
+                    if (params.TAG?.trim()) {
+
+                        echo "Checking out TAG: ${params.TAG}"
+
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[
+                                name: "refs/tags/${params.TAG}"
+                            ]],
+                            userRemoteConfigs: [[
+                                url: env.GITHUB_REPOSITORY
+                            ]]
+                        ])
+
+                    } else {
+
+                        echo "Checking out BRANCH: ${params.BRANCH}"
+
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[
+                                name: params.BRANCH
+                            ]],
+                            userRemoteConfigs: [[
+                                url: env.GITHUB_REPOSITORY
+                            ]]
+                        ])
+                    }
+                }
+            }
+        }
+
+        stage('Show Git Information') {
+            steps {
+                sh '''
+                    echo "======================================"
+                    echo "Checked Out Version"
+                    echo "======================================"
+
+                    echo "Commit:"
+                    git rev-parse HEAD
+
+                    echo "Branch:"
+                    git branch --show-current || true
+
+                    echo "Tag:"
+                    git describe --tags --exact-match HEAD || true
+
+                    echo "Remote:"
+                    git remote -v
+
+                    echo "======================================"
+                '''
+            }
+        }
+
+        stage('Prepare Docker Tag') {
+            steps {
+                script {
+
+                    if (params.TAG?.trim()) {
+                        env.DOCKER_TAG = params.TAG
+                    } else {
+                        env.DOCKER_TAG = "build-${BUILD_NUMBER}"
+                    }
+
+                    echo "Docker Image:"
+                    echo "${IMAGE_NAME}:${env.DOCKER_TAG}"
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    echo "======================================"
+                    echo "Building Docker Image"
+                    echo "======================================"
+
+                    docker build \
+                        -t ${IMAGE_NAME}:${DOCKER_TAG} .
+
+                    echo "======================================"
+                    echo "Docker Build Complete"
+                    echo "======================================"
+
+                    docker images ${IMAGE_NAME}
+                '''
+            }
+        }
+    }
+
+    post {
+
+        success {
+            echo "======================================"
+            echo "BUILD SUCCESSFUL"
+            echo "======================================"
+
+            echo "Action: ${params.ACTION}"
+            echo "Docker Image: ${IMAGE_NAME}:${env.DOCKER_TAG}"
+
+            echo "======================================"
+        }
+
+        failure {
+            echo "======================================"
+            echo "BUILD FAILED"
+            echo "======================================"
+        }
+
+        always {
+            echo "Jenkins Build Number: ${BUILD_NUMBER}"
+        }
+    }
+}
